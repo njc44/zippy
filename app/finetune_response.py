@@ -16,31 +16,37 @@ def cosine_similarity(vec1, vec2):
 
 def create_response(query, response, shop, expiry_date='NA', action='NA'):
 
-    if os.path.exists("/app/app/data_files/qr_dictionary.json"):
-        f = open('/app/app/data_files/qr_dictionary.json')
-        data = json.load(f)
-        response_emb = client.embeddings.create(
-            input=query,
-            model="text-embedding-3-large"
-        )
+    try:
+        if os.path.exists("/app/app/data_files/qr_dictionary.json"):
+            f = open('/app/app/data_files/qr_dictionary.json')
+            data = json.load(f)
+            response_emb = client.embeddings.create(
+                input=query,
+                model="text-embedding-3-large"
+            )
 
-        embedding = response_emb.data[0].embedding
+            embedding = response_emb.data[0].embedding
 
-        data[shop].append({'query':query, 'response':response, 'embedding':embedding, 'expiry_date':expiry_date, 'action':action})
-    else: 
-        response_emb = client.embeddings.create(
-            input=query,
-            model="text-embedding-3-large"
-        )
+            data[shop].append({'query':query, 'response':response, 'embedding':embedding, 'expiry_date':expiry_date, 'action':action})
+        else: 
+            response_emb = client.embeddings.create(
+                input=query,
+                model="text-embedding-3-large"
+            )
 
-        embedding = response_emb.data[0].embedding
-        data = dict()
-        data[shop] = []
-        data[shop].append({'query':query, 'response':response, 'embedding':embedding, 'expiry_date':expiry_date, 'action': action})
+            embedding = response_emb.data[0].embedding
+            data = dict()
+            data[shop] = []
+            data[shop].append({'query':query, 'response':response, 'embedding':embedding, 'expiry_date':expiry_date, 'action': action})
 
 
-    with open("/app/app/data_files/qr_dictionary.json", "w") as f: 
-        json.dump(data, f)
+        with open("/app/app/data_files/qr_dictionary.json", "w") as f: 
+            json.dump(data, f)
+
+        return True
+    except Exception as e:
+        print("Error create_response:", e)
+        return False
 
 
 def check_similar_queries(new_query, shop):

@@ -496,94 +496,98 @@ async def process_api_requests_from_file(
 ###############################################
 
 def train(shop):
-    product_df = get_product_df(shop)
+    try:
+        product_df = get_product_df(shop)
 
-    df = product_df[['id','featuredImage_url','title','description','featuredImage_altText']]
-    df1 = pd.DataFrame()
-    batch_size = 10
-    for i in range(0,len(df),batch_size):
-        df_x = df[i:min(i+batch_size,len(df))].reset_index(drop=True)
-        x = df_x.T[:1].rename(columns={j:f'product_id_{j}' for j in range(batch_size)}).reset_index(drop=True)
-        y = df_x.T[1:2].rename(columns={j:f'featureImage_url_{j}' for j in range(batch_size)}).reset_index(drop=True)
-        z = df_x.T[2:3].rename(columns={j:f'title_{j}' for j in range(batch_size)}).reset_index(drop=True)
-        w = df_x.T[3:4].rename(columns={j:f'product_description_{j}' for j in range(batch_size)}).reset_index(drop=True)
-        v = df_x.T[4:5].rename(columns={j:f'featuredImage_altText_{j}' for j in range(batch_size)}).reset_index(drop=True)
-        df_x = pd.concat([x,y,z,w,v],axis=1)
-        df1 = pd.concat([df1,df_x],axis=0).reset_index(drop=True)
-    main_data_path = f'/app/app/data_files/gpt4v_feature_extraction.jsonl'
-    df1.to_json(main_data_path, orient='records', lines=True)
+        df = product_df[['id','featuredImage_url','title','description','featuredImage_altText']]
+        df1 = pd.DataFrame()
+        batch_size = 10
+        for i in range(0,len(df),batch_size):
+            df_x = df[i:min(i+batch_size,len(df))].reset_index(drop=True)
+            x = df_x.T[:1].rename(columns={j:f'product_id_{j}' for j in range(batch_size)}).reset_index(drop=True)
+            y = df_x.T[1:2].rename(columns={j:f'featureImage_url_{j}' for j in range(batch_size)}).reset_index(drop=True)
+            z = df_x.T[2:3].rename(columns={j:f'title_{j}' for j in range(batch_size)}).reset_index(drop=True)
+            w = df_x.T[3:4].rename(columns={j:f'product_description_{j}' for j in range(batch_size)}).reset_index(drop=True)
+            v = df_x.T[4:5].rename(columns={j:f'featuredImage_altText_{j}' for j in range(batch_size)}).reset_index(drop=True)
+            df_x = pd.concat([x,y,z,w,v],axis=1)
+            df1 = pd.concat([df1,df_x],axis=0).reset_index(drop=True)
+        main_data_path = f'/app/app/data_files/gpt4v_feature_extraction.jsonl'
+        df1.to_json(main_data_path, orient='records', lines=True)
 
 
-    final_batched_data = get_batched_data_with_configs(main_data_path,is_post_process=True)
+        final_batched_data = get_batched_data_with_configs(main_data_path,is_post_process=True)
 
-    async def process_batches(batch_configs):
-        await asyncio.gather(*(process_api_requests_from_file(**batch) for batch in batch_configs))
-    asyncio.run(process_batches(final_batched_data))
+        async def process_batches(batch_configs):
+            await asyncio.gather(*(process_api_requests_from_file(**batch) for batch in batch_configs))
+        asyncio.run(process_batches(final_batched_data))
 
-    df_list = []
-    for k, v in configs.items():
-        if k!='openai':
-            continue
-        p = os.path.join(result_dir, f'{k}.jsonl')
-        if os.path.isfile(p):
-            df = pd.read_json(p, lines=True)
-            df_list.append(df)
-    big_df = pd.concat(df_list, ignore_index=True)
-    print('len - ', big_df.shape)
-    passed_pddf = big_df[big_df[3]=='fetch_request_json_using_metadata'].reset_index(drop=True)
+        df_list = []
+        for k, v in configs.items():
+            if k!='openai':
+                continue
+            p = os.path.join(result_dir, f'{k}.jsonl')
+            if os.path.isfile(p):
+                df = pd.read_json(p, lines=True)
+                df_list.append(df)
+        big_df = pd.concat(df_list, ignore_index=True)
+        print('len - ', big_df.shape)
+        passed_pddf = big_df[big_df[3]=='fetch_request_json_using_metadata'].reset_index(drop=True)
 
-    output_list = []
-    for idx in range(len(passed_pddf)):
-        try:
-            output_list.append(ast.literal_eval(passed_pddf[2][idx]['choices'][0]['message']['content'].replace('json','').replace("```",'')))
-        except:
-            pass
-    output_json = {k: v for dct in output_list for k, v in dct.items()}
+        output_list = []
+        for idx in range(len(passed_pddf)):
+            try:
+                output_list.append(ast.literal_eval(passed_pddf[2][idx]['choices'][0]['message']['content'].replace('json','').replace("```",'')))
+            except:
+                pass
+        output_json = {k: v for dct in output_list for k, v in dct.items()}
 
-    product_df['queries'] = product_df.apply(lambda x: output_json[str(x['id'])]['queries'],axis=1)
-    product_df['seo_product_description'] = product_df.apply(lambda x: output_json[str(x['id'])]['product_description'],axis=1)
+        product_df['queries'] = product_df.apply(lambda x: output_json[str(x['id'])]['queries'],axis=1)
+        product_df['seo_product_description'] = product_df.apply(lambda x: output_json[str(x['id'])]['product_description'],axis=1)
 
-    # model_id = 'naver/splade-cocondenser-ensembledistil'
-    # tokenizer = AutoTokenizer.from_pretrained(model_id)
-    # model = AutoModelForMaskedLM.from_pretrained(model_id)
+        # model_id = 'naver/splade-cocondenser-ensembledistil'
+        # tokenizer = AutoTokenizer.from_pretrained(model_id)
+        # model = AutoModelForMaskedLM.from_pretrained(model_id)
 
-    product_tokens = tokenizer(
-    [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
-    product_df[product_df['id']==str(id)]['seo_product_description'][product_df[product_df['id']==str(id)].index[0]] + \
-    product_df[product_df['id']==str(id)]['title'][product_df[product_df['id']==str(id)].index[0]] + \
-    product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']], return_tensors='pt',
-    padding=True, truncation=True
-    )
-    product_output = model(**product_tokens)
-    # aggregate the token-level vecs and transform to sparse
-    product_vecs = torch.max(
-        torch.log(1 + torch.relu(product_output.logits)) * product_tokens.attention_mask.unsqueeze(-1), dim=1
-    )[0].squeeze().detach().cpu().numpy()
-
-    product_df['sparse_product_vector'] = pd.DataFrame(product_vecs).apply(lambda row: row.tolist(), axis=1)
-    product_df['shop'] = shop
-
-    product_df.to_parquet('/app/app/data_files/product_df.parquet')
-    
-    data = get_brand_and_policy_info()
-    
-    questions = ['What is your return policy?','How long does shipping typically take?']
-    system_prompt = f"""You are a sales agent on an ecommerce platform, your job is to reply to customer queries just as a real life sales agent would. What would your reply be to '{questions[0]}' & {questions[1]} given:
-    Refund Policy - {data['refundPolicy']['body']}\n
-    Shipping Policy - {data['shippingPolicy']['body']}\n
-    Make sure the answers are crisp and to the point
-    Respond in json format with keys 'refund' & 'shipping' with the values as your responses.
-    """
-
-    messages = [{"role": "system","content": system_prompt}]
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        response_format = { "type": "json_object" }
+        product_tokens = tokenizer(
+        [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
+        product_df[product_df['id']==str(id)]['seo_product_description'][product_df[product_df['id']==str(id)].index[0]] + \
+        product_df[product_df['id']==str(id)]['title'][product_df[product_df['id']==str(id)].index[0]] + \
+        product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']], return_tensors='pt',
+        padding=True, truncation=True
         )
-    reply = response.choices[0].message.content
-    reply = json.loads(reply)
-    create_response(questions[0],reply['refund'],shop)
-    create_response(questions[1],reply['shipping'],shop)
-    
-    return True
+        product_output = model(**product_tokens)
+        # aggregate the token-level vecs and transform to sparse
+        product_vecs = torch.max(
+            torch.log(1 + torch.relu(product_output.logits)) * product_tokens.attention_mask.unsqueeze(-1), dim=1
+        )[0].squeeze().detach().cpu().numpy()
+
+        product_df['sparse_product_vector'] = pd.DataFrame(product_vecs).apply(lambda row: row.tolist(), axis=1)
+        product_df['shop'] = shop
+
+        product_df.to_parquet('/app/app/data_files/product_df.parquet')
+        
+        data = get_brand_and_policy_info()
+        
+        questions = ['What is your return policy?','How long does shipping typically take?']
+        system_prompt = f"""You are a sales agent on an ecommerce platform, your job is to reply to customer queries just as a real life sales agent would. What would your reply be to '{questions[0]}' & {questions[1]} given:
+        Refund Policy - {data['refundPolicy']['body']}\n
+        Shipping Policy - {data['shippingPolicy']['body']}\n
+        Make sure the answers are crisp and to the point
+        Respond in json format with keys 'refund' & 'shipping' with the values as your responses.
+        """
+
+        messages = [{"role": "system","content": system_prompt}]
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            response_format = { "type": "json_object" }
+            )
+        reply = response.choices[0].message.content
+        reply = json.loads(reply)
+        create_response(questions[0],reply['refund'],shop)
+        create_response(questions[1],reply['shipping'],shop)
+        
+        return True
+    except Exception as e:
+        print("Error train", e)
+        return False

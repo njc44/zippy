@@ -35,11 +35,12 @@ def train_(shop):
 
 @app.get('/message')
 def response_generator_(latest_user_message, user_id, shop):
-    return json.dumps(response_generator(latest_user_message, user_id, shop))
+    return json.loads(response_generator(latest_user_message, user_id, shop))
 
 @app.get('/finetune_response')
 def create_response_(query, response, shop, expiry_date='NA', action='NA'):
-    return create_response(query, response, shop, expiry_date, action)
+    create_response_status = create_response(query, response, shop, expiry_date, action)
+    return create_response_status
 
 if __name__ == '__main__':
     uvicorn.run(app, host='0.0.0.0', port=10000)
