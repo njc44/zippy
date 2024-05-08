@@ -548,18 +548,28 @@ def train(shop):
         # tokenizer = AutoTokenizer.from_pretrained(model_id)
         # model = AutoModelForMaskedLM.from_pretrained(model_id)
 
-        product_tokens = tokenizer(
-        [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
+        # product_tokens = tokenizer(
+        # [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
+        # product_df[product_df['id']==str(id)]['seo_product_description'][product_df[product_df['id']==str(id)].index[0]] + \
+        # product_df[product_df['id']==str(id)]['title'][product_df[product_df['id']==str(id)].index[0]] + \
+        # product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']], return_tensors='pt',
+        # padding=True, truncation=True
+        # )
+        # product_output = model(**product_tokens)
+        # # aggregate the token-level vecs and transform to sparse
+        # product_vecs = torch.max(
+        #     torch.log(1 + torch.relu(product_output.logits)) * product_tokens.attention_mask.unsqueeze(-1), dim=1
+        # )[0].squeeze().detach().cpu().numpy()
+
+        product_info_list = [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
         product_df[product_df['id']==str(id)]['seo_product_description'][product_df[product_df['id']==str(id)].index[0]] + \
         product_df[product_df['id']==str(id)]['title'][product_df[product_df['id']==str(id)].index[0]] + \
-        product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']], return_tensors='pt',
-        padding=True, truncation=True
-        )
-        product_output = model(**product_tokens)
-        # aggregate the token-level vecs and transform to sparse
-        product_vecs = torch.max(
-            torch.log(1 + torch.relu(product_output.logits)) * product_tokens.attention_mask.unsqueeze(-1), dim=1
-        )[0].squeeze().detach().cpu().numpy()
+        product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']]
+
+        product_info_list = [re.sub(r'[^a-zA-Z0-9\s]', '',str(i).replace(',',' ').replace('\n','')) for i in product_info_list]
+        product_info_list = [' '.join(j.split()) for j in product_info_list]
+
+        product_vecs = process_search_queries(product_info_list)
 
         product_df['sparse_product_vector'] = pd.DataFrame(product_vecs).apply(lambda row: row.tolist(), axis=1)
         product_df['shop'] = shop

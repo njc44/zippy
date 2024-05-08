@@ -56,7 +56,7 @@ def response_generator(latest_user_message, user_id, shop):
         new_row = pd.DataFrame({'user': [latest_user_message], 'assistant': [reply], 'user_id' : [user_id], 'shop' : [shop], 'timestamp' : [timestamp_str]})
         df = pd.concat([df, new_row], ignore_index=True)
         df.to_csv('/app/app/data_files/message_data.csv')
-        return json.dumps(return_value)
+        return return_value
 
 
 

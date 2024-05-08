@@ -35,7 +35,7 @@ def train_(shop):
 
 @app.get('/message')
 def response_generator_(latest_user_message, user_id, shop):
-    return json.loads(response_generator(latest_user_message, user_id, shop))
+    return response_generator(latest_user_message, user_id, shop)
 
 @app.get('/finetune_response')
 def create_response_(query, response, shop, expiry_date='NA', action='NA'):
