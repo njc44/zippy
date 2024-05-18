@@ -15,7 +15,7 @@ os.makedirs(result_dir, exist_ok=True)
 configs = {
 # "summarization_uswest": {"url": "https://deployment.openai.azure.com/openai/deployments/gpt4-vision/chat/completions?api-version=2024-02-15-preview", "api_key": "key", "max_rpm": 8, "max_tpm": 30000, "max_attempts": 1},
 
-"openai": {"url": "https://api.openai.com/v1/chat/completions", "api_key": os.getenv("OPENAI_API_KEY"),"max_rpm": 100, "max_tpm": 300000, "max_attempts": 1}
+"openai": {"url": "https://api.openai.com/v1/chat/completions", "api_key": os.getenv("OPENAI_API_KEY"),"max_rpm": 100, "max_tpm": 8000, "max_attempts": 1}
 }
 
 

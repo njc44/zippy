@@ -14,7 +14,7 @@ def cosine_similarity(vec1, vec2):
     norm_vec2 = np.linalg.norm(vec2)
     return dot_product / (norm_vec1 * norm_vec2)
 
-def create_response(query, response, shop, expiry_date='NA', action='NA'):
+def create_response(query, response, shop, action='NA', expiry_date='NA'):
 
     try:
         if os.path.exists("/app/app/data_files/qr_dictionary.json"):
