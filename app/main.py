@@ -29,8 +29,8 @@ def health_check():
     return json.dumps({"success": True}), 200
 
 @app.get('/train')
-def train_(shop):
-    training_status = train(shop)
+def train_(shop, shopify_storefront_access_token, shopify_access_token):
+    training_status = train(shop, shopify_storefront_access_token, shopify_access_token)
     return training_status
 
 @app.get('/message')

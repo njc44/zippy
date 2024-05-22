@@ -25,6 +25,8 @@ import openai
 from dotenv import load_dotenv
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 import torch
+import psycopg2
+from sqlalchemy import create_engine
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -33,6 +35,7 @@ logger.getEffectiveLevel()
 from gpt4_utils import result_dir, configs, get_batched_data_with_configs
 from finetune_response import create_response
 from search import *
+from app_utils import *
 
 load_dotenv('/app/app/.env')
 client=openai.OpenAI()
@@ -41,8 +44,13 @@ client=openai.OpenAI()
 def get_product_data(shop):
     SHOPIFY_URL = f"https://{shop}/admin/api/2024-04/graphql.json"
 
+    conn, cur, engine = get_connection()
+    query = f"SELECT * FROM secrets where shop = '{shop}'"
+    secrets_df = pd.read_sql_query(query, conn).reset_index(drop=True)
+    cut_connection(conn, cur)
+
     headers = {
-        "X-Shopify-Access-Token": os.getenv("Shopify-Access-Token"),
+        "X-Shopify-Access-Token": secrets_df["shopify_access_token"][0],
         "Content-Type": "application/graphql"
     }
 
@@ -70,12 +78,11 @@ def get_product_data(shop):
         
     url = data['data']['currentBulkOperation']['url']
     r = requests.get(url) 
-    with open("/app/app/data_files/product_data.jsonl",'wb') as f: 
-        f.write(r.content)
+    jsonObj = pd.read_json(BytesIO(r.content), lines=True)
+    return jsonObj
 
 def get_product_df(shop):
-    get_product_data(shop)
-    jsonObj = pd.read_json(path_or_buf="/app/app/data_files/product_data.jsonl", lines=True)
+    jsonObj = get_product_data(shop)
 
     product_df = jsonObj[~jsonObj['createdAt'].isnull()][['featuredImage','handle', 'id', 'isGiftCard', 'productType', 'seo', 'tags', 'title','totalInventory', 'vendor','description']].reset_index(drop=True)
     variant_df = jsonObj[jsonObj['createdAt'].isnull()][['id','price', 'title', 'image', 'sku', 'weight','weightUnit', 'availableForSale', '__parentId']].reset_index(drop=True)
@@ -101,15 +108,21 @@ def remove_substrings_between_tags(text):
     return result
 
 
-def get_brand_and_policy_info():
+def get_brand_and_policy_info(shop):
+
+    conn, cur, engine = get_connection()
+    query = f"SELECT * FROM secrets where shop = '{shop}'"
+    secrets_df = pd.read_sql_query(query, conn).reset_index(drop=True)
+    cut_connection(conn, cur)
+
     headers = {
         'Content-Type': 'application/json',
-        'X-Shopify-Storefront-Access-Token': os.getenv("Shopify-Storefront-Access-Token")
+        'X-Shopify-Storefront-Access-Token': secrets_df["shopify_storefront_access_token"][0]
     }
     payload = {
         'query': 'query { shop { brand { slogan shortDescription } privacyPolicy { body handle title } refundPolicy { body handle title } shippingPolicy { body handle title } subscriptionPolicy { body handle title } termsOfService { body handle title } } }'
     }
-    response = requests.post('https://epicstories.myshopify.com/api/2024-04/graphql.json', headers=headers, data=json.dumps(payload))
+    response = requests.post(f'https://{shop}/api/2024-04/graphql.json', headers=headers, data=json.dumps(payload))
     data = response.json()['data']['shop']
     for policy in ['privacyPolicy','refundPolicy','shippingPolicy','subscriptionPolicy','termsOfService']:
         text = data[policy]['body']
@@ -313,7 +326,7 @@ Respond in json parseable format with key as - id and values as dictionary:
         "metadata": {"region": region_name, "request_id": request_id}
     }
     if region_name == 'openai':
-        payload.update({"model": "gpt-4-vision-preview"})
+        payload.update({"model": "gpt-4o"})
     return payload
 
 def get_header(key, region):
@@ -495,13 +508,32 @@ async def process_api_requests_from_file(
 
 ###############################################
 
-def train(shop):
-    try:
-        product_df = get_product_df(shop)
+def insert_or_update_row(new_row, table_name):
+    conn, cur, engine = get_connection()
+    shop_value = new_row['shop'][0]
+    existing_row = pd.read_sql_query(f"SELECT * FROM {table_name} WHERE shop = '{shop_value}'", engine)
 
+    if existing_row.empty:
+        new_row.to_sql(table_name, engine, if_exists='append', index=False)
+    else:
+        update_columns = [col for col in new_row.columns if col != 'shop']
+        update_values = {col: new_row[col].values[0] for col in update_columns}
+        update_query = f"""UPDATE {table_name} SET {', '.join([f"{col}='{update_values[col]}'" for col in update_columns])}""" + f" WHERE shop='{shop_value}'"
+        cur.execute(update_query)
+    cut_connection(conn, cur)
+
+def save_keys(shop, shopify_storefront_access_token, shopify_access_token):
+    table_name = 'secrets'
+    new_row = pd.DataFrame({'shop' : [shop], 'shopify_storefront_access_token': [shopify_storefront_access_token], 'shopify_access_token': [shopify_access_token]})
+    insert_or_update_row(new_row, table_name)
+
+def train(shop, shopify_storefront_access_token, shopify_access_token):
+    try:
+        save_keys(shop, shopify_storefront_access_token, shopify_access_token)
+        product_df = get_product_df(shop)
         df = product_df[['id','featuredImage_url','title','description','featuredImage_altText']]
         df1 = pd.DataFrame()
-        batch_size = 10
+        batch_size = 4
         for i in range(0,len(df),batch_size):
             df_x = df[i:min(i+batch_size,len(df))].reset_index(drop=True)
             x = df_x.T[:1].rename(columns={j:f'product_id_{j}' for j in range(batch_size)}).reset_index(drop=True)
@@ -514,9 +546,7 @@ def train(shop):
         main_data_path = f'/app/app/data_files/gpt4v_feature_extraction.jsonl'
         df1.to_json(main_data_path, orient='records', lines=True)
 
-
         final_batched_data = get_batched_data_with_configs(main_data_path,is_post_process=True)
-
         async def process_batches(batch_configs):
             await asyncio.gather(*(process_api_requests_from_file(**batch) for batch in batch_configs))
         asyncio.run(process_batches(final_batched_data))
@@ -543,40 +573,26 @@ def train(shop):
 
         product_df['queries'] = product_df.apply(lambda x: output_json[str(x['id'])]['queries'],axis=1)
         product_df['seo_product_description'] = product_df.apply(lambda x: output_json[str(x['id'])]['product_description'],axis=1)
-
-        # model_id = 'naver/splade-cocondenser-ensembledistil'
-        # tokenizer = AutoTokenizer.from_pretrained(model_id)
-        # model = AutoModelForMaskedLM.from_pretrained(model_id)
-
-        # product_tokens = tokenizer(
-        # [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
-        # product_df[product_df['id']==str(id)]['seo_product_description'][product_df[product_df['id']==str(id)].index[0]] + \
-        # product_df[product_df['id']==str(id)]['title'][product_df[product_df['id']==str(id)].index[0]] + \
-        # product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']], return_tensors='pt',
-        # padding=True, truncation=True
-        # )
-        # product_output = model(**product_tokens)
-        # # aggregate the token-level vecs and transform to sparse
-        # product_vecs = torch.max(
-        #     torch.log(1 + torch.relu(product_output.logits)) * product_tokens.attention_mask.unsqueeze(-1), dim=1
-        # )[0].squeeze().detach().cpu().numpy()
-
         product_info_list = [','.join([query for query in product_df[product_df['id']==str(id)]['queries'][product_df[product_df['id']==str(id)].index[0]]]) + \
         product_df[product_df['id']==str(id)]['seo_product_description'][product_df[product_df['id']==str(id)].index[0]] + \
         product_df[product_df['id']==str(id)]['title'][product_df[product_df['id']==str(id)].index[0]] + \
         product_df[product_df['id']==str(id)]['featuredImage_altText'][product_df[product_df['id']==str(id)].index[0]] for id in product_df['id']]
-
         product_info_list = [re.sub(r'[^a-zA-Z0-9\s]', '',str(i).replace(',',' ').replace('\n','')) for i in product_info_list]
         product_info_list = [' '.join(j.split()) for j in product_info_list]
-
         product_vecs = process_search_queries(product_info_list)
-
         product_df['sparse_product_vector'] = pd.DataFrame(product_vecs).apply(lambda row: row.tolist(), axis=1)
         product_df['shop'] = shop
 
-        product_df.to_parquet('/app/app/data_files/product_df.parquet')
-        
-        data = get_brand_and_policy_info()
+        table_name = 'products'
+        product_df = product_df[['id','sparse_product_vector','shop']]
+        product_df['sparse_product_vector'] = product_df.apply(lambda x: json.dumps(list(x['sparse_product_vector'])),axis=1)
+
+        conn, cur, engine = get_connection()
+        product_df.to_sql(table_name, engine, if_exists='append', index=False)
+        cut_connection(conn, cur)
+
+        os.remove("/app/app/data_files/gpt4v_feature_extraction.jsonl")
+        data = get_brand_and_policy_info(shop)
         
         questions = ['What is your return policy?','How long does shipping typically take?']
         system_prompt = f"""You are a sales agent on an ecommerce platform, your job is to reply to customer queries just as a real life sales agent would. What would your reply be to '{questions[0]}' & {questions[1]} given:
@@ -588,7 +604,7 @@ def train(shop):
 
         messages = [{"role": "system","content": system_prompt}]
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo-0125",
             messages=messages,
             response_format = { "type": "json_object" }
             )

@@ -4,6 +4,9 @@ import openai
 import numpy as np
 from dotenv import load_dotenv
 from search import * 
+from app_utils import *
+import psycopg2
+from sqlalchemy import create_engine
 
 load_dotenv('/app/app/.env')
 client=openai.OpenAI()
@@ -14,34 +17,32 @@ def cosine_similarity(vec1, vec2):
     norm_vec2 = np.linalg.norm(vec2)
     return dot_product / (norm_vec1 * norm_vec2)
 
+def dense_vector_formating(vector_data): 
+    rough_list = vector_data.split(',')
+    for idx,vd in enumerate(rough_list):
+        if (idx == 0):
+            rough_list[idx] = float(vd[1:])
+        elif (idx == len(rough_list)-1):
+            rough_list[idx] = float(vd[:-1])
+        else:
+            rough_list[idx] = float(vd)
+    return np.array(rough_list)
+
 def create_response(query, response, shop, action='NA', expiry_date='NA'):
 
     try:
-        if os.path.exists("/app/app/data_files/qr_dictionary.json"):
-            f = open('/app/app/data_files/qr_dictionary.json')
-            data = json.load(f)
-            response_emb = client.embeddings.create(
-                input=query,
-                model="text-embedding-3-large"
-            )
+        response_emb = client.embeddings.create(
+            input=query,
+            model="text-embedding-3-large"
+        )
 
-            embedding = response_emb.data[0].embedding
+        embedding = response_emb.data[0].embedding
 
-            data[shop].append({'query':query, 'response':response, 'embedding':embedding, 'expiry_date':expiry_date, 'action':action})
-        else: 
-            response_emb = client.embeddings.create(
-                input=query,
-                model="text-embedding-3-large"
-            )
-
-            embedding = response_emb.data[0].embedding
-            data = dict()
-            data[shop] = []
-            data[shop].append({'query':query, 'response':response, 'embedding':embedding, 'expiry_date':expiry_date, 'action': action})
-
-
-        with open("/app/app/data_files/qr_dictionary.json", "w") as f: 
-            json.dump(data, f)
+        new_row = pd.DataFrame({'query':[query], 'response':[response], 'embedding':[embedding], 'expiry_date':[expiry_date], 'action':[action], 'shop':[shop]})
+        conn, cur, engine = get_connection()
+        table_name = 'finetune_response'
+        new_row.to_sql(table_name, engine, if_exists='append', index=False)
+        cut_connection(conn, cur)
 
         return True
     except Exception as e:
@@ -50,12 +51,14 @@ def create_response(query, response, shop, action='NA', expiry_date='NA'):
 
 
 def check_similar_queries(new_query, shop):
-    f = open('/app/app/data_files/qr_dictionary.json')
-    data = json.load(f)
+    conn, cur, _ = get_connection()
+    query = f"SELECT * FROM finetune_response where shop = '{shop}'"
+    finetune_response_df = pd.read_sql_query(query, conn)
+    cut_connection(conn, cur)
 
     vector_data = []
     vector_metadata = []
-    for data_point in data[shop]:
+    for data_point in finetune_response_df.iloc():
         vector_data.append(np.array(data_point['embedding']))
         vector_metadata.append({'query':data_point['query'],'response':data_point['response'],'expiry_date':data_point['expiry_date'],'action':data_point['action']})
 
@@ -70,11 +73,12 @@ def check_similar_queries(new_query, shop):
 
     cosine_similarities = []
     for i in range(vector_data.shape[0]):
-        cosine_sim = cosine_similarity(vector_data[i], query_vector)
+        vdi = dense_vector_formating(vector_data[i])
+        cosine_sim = cosine_similarity(vdi, query_vector)
         cosine_similarities.append(cosine_sim)
 
     cosine_similarities = np.array(cosine_similarities)
-    indices = np.where(np.array(cosine_similarities) > 0.6)[0]
+    indices = np.where(np.array(cosine_similarities) > 0.4)[0]
     indices_sorted = sorted(indices, key=lambda x: cosine_similarities[x], reverse=True)
     top_indices = indices_sorted[:3]
 
@@ -92,11 +96,11 @@ def check_similar_queries(new_query, shop):
             if search_response != []:
                 for idx, i in enumerate(search_response):
                     product_ids.append(i['node']['id'])
-        system_prompt = f"""You are a sales agent on an ecommerce platform, the shop owner gave the instruction that if a user asks - {query}, it is to be responded with - {response}. Now a new user has asked the query - {new_query}. Is it alright to respond to the new user's query the same way? Respond 'YES' or 'NO'. (Your decision should be based on whether both the queries the same intent as one another)"""
+        system_prompt = f"""You are a sales agent on an ecommerce platform, the shop owner gave the instruction that if a user asks the query - {query}, it is to be responded with the response - {response}. Now a new user has asked a new query - {new_query}. \nWould it be appropriate to use the same response for this user's query as well? \nRespond 'YES' or 'NO'. (Your decision should be based on whether both the queries have the same intent as one another)"""
 
         messages = [{"role": "system","content": system_prompt}]
         response_gpt = client.chat.completions.create(
-            model="gpt-4-turbo",
+            model="gpt-3.5-turbo-0125",
             messages=messages,
             max_tokens=1024
             )

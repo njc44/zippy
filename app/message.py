@@ -13,6 +13,9 @@ import pandas as pd
 import numpy as np
 from finetune_response import check_similar_queries
 from search import *
+from app_utils import *
+import psycopg2
+from sqlalchemy import create_engine
 
 load_dotenv('/app/app/.env')
 client=openai.OpenAI()
@@ -40,22 +43,19 @@ tools = tools = [
 
 
 def response_generator(latest_user_message, user_id, shop):
+    conn, cur, engine = get_connection()
+    table_name = 'messages'
     check_flag, reply, product_ids = check_similar_queries(latest_user_message,shop)
     if check_flag == True:
         return_value = {}
         return_value['response'] = reply
         return_value['product_ids'] = product_ids
 
-        if os.path.exists("/app/app/data_files/message_data.csv"):
-            df = pd.read_csv("/app/app/data_files/message_data.csv").drop(columns={'Unnamed: 0'})
-        else:
-            df = pd.DataFrame()
-
         now = datetime.datetime.now()
         timestamp_str = now.strftime("%Y-%m-%d %H:%M:%S")
-        new_row = pd.DataFrame({'user': [latest_user_message], 'assistant': [reply], 'user_id' : [user_id], 'shop' : [shop], 'timestamp' : [timestamp_str]})
-        df = pd.concat([df, new_row], ignore_index=True)
-        df.to_csv('/app/app/data_files/message_data.csv')
+        new_row = pd.DataFrame({'user_id' : [user_id], 'user_message': [latest_user_message], 'assistant_message': [reply], 'shop' : [shop], 'timestamp' : [timestamp_str]})
+        new_row.to_sql(table_name, engine, if_exists='append', index=False)
+        cut_connection(conn, cur)
         return return_value
 
 
@@ -63,10 +63,13 @@ def response_generator(latest_user_message, user_id, shop):
     system_prompt = f"""You are a sales agent on an e-commerce platform, your job is to reply to customer queries just as a real life sales agent would. 
     You will be given relevant info about the products and policies if and when required to be used to answer a query appropriately. Try to reply within 120 words."""
     
-    if os.path.exists("/app/app/data_files/message_data.csv"):
-        df = pd.read_csv("/app/app/data_files/message_data.csv").drop(columns={'Unnamed: 0'})
-        df1 = df[(df['user_id']==int(user_id)) & (df['shop']==shop)].sort_values(by='timestamp', ascending=False).reset_index(drop=True)[:7]
-
+    query = f"""SELECT * FROM messages 
+              where user_id = '{user_id}'
+              and shop = '{shop}
+              order by timestamp desc'"""
+    df = pd.read_sql_query(query, conn)
+    if len(df) == 0:
+        df1 = df[:7]
         messages = [{"role": "user", "content": latest_user_message}]
         for itr in df1.iloc():
             messages.append({"role": "assistant", "content": itr['assistant']})
@@ -76,12 +79,11 @@ def response_generator(latest_user_message, user_id, shop):
         messages.reverse()
 
     else:
-        df = pd.DataFrame()
         messages = [{"role": "system","content": system_prompt}, 
                 {"role": "user", "content": latest_user_message}]
         
     response = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model="gpt-3.5-turbo-0125",
         messages=messages,
         tools=tools,
         tool_choice="auto",
@@ -105,7 +107,7 @@ def response_generator(latest_user_message, user_id, shop):
                 product_ids.append(i['node']['id'])
             messages.append({"role": "system","content": f"Here are some products that surfaced from the customer query: \n{product_info} Try to recommend these to the customer, keep it short within 60 words or less if possible."})
             response = client.chat.completions.create(
-                model="gpt-4-turbo",
+                model="gpt-3.5-turbo-0125",
                 messages=messages,
                 max_tokens=1024
                 )
@@ -120,9 +122,8 @@ def response_generator(latest_user_message, user_id, shop):
     now = datetime.datetime.now()
     timestamp_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    new_row = pd.DataFrame({'user': [latest_user_message], 'assistant': [reply], 'user_id' : [user_id], 'shop' : [shop], 'timestamp' : [timestamp_str]})
-    df = pd.concat([df, new_row], ignore_index=True)
-
-    df.to_csv('/app/app/data_files/message_data.csv')
+    new_row = pd.DataFrame({'user_id' : [user_id], 'user_message': [latest_user_message], 'assistant_message': [reply], 'shop' : [shop], 'timestamp' : [timestamp_str]})
+    new_row.to_sql(table_name, engine, if_exists='append', index=False)
+    cut_connection(conn, cur)
 
     return return_value

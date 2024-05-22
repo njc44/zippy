@@ -7,6 +7,9 @@ import torch
 import pickle
 import json
 import urllib.parse
+import psycopg2
+from sqlalchemy import create_engine
+from app_utils import *
 
 
 tokenizer = None
@@ -24,8 +27,14 @@ def process_search_queries(search_queries_list):
         return None
 
 def call_search_api(keywords, shop):
-    product_df = pd.read_parquet('/app/app/data_files/product_df.parquet')
-    product_df = product_df[product_df['shop']==shop].reset_index(drop=True)
+    conn, cur, _ = get_connection()
+    query = f"""
+            SELECT * FROM products 
+            where shop = '{shop}'
+            """
+    product_df = pd.read_sql_query(query, conn)
+    cut_connection(conn, cur)
+    product_df['sparse_product_vector'] = product_df.apply(lambda x: json.loads(x['sparse_product_vector']),axis=1)
 
     search_queries = keywords
     search_vecs = process_search_queries(search_queries)
@@ -47,9 +56,13 @@ def call_search_api(keywords, shop):
     top_5 = np.array(list(set(np.concatenate([top_3_1st,top_2_2nd]))))
 
     response = []
+    conn, cur, _ = get_connection()
+    query = f"SELECT * FROM secrets where shop = '{shop}'"
+    secret_df = pd.read_sql_query(query, conn).reset_index(drop=True)
+    cut_connection(conn, cur)
     for id in top_5:
         headers = {
-        "X-Shopify-Access-Token": os.getenv("Shopify-Access-Token"),
+        "X-Shopify-Access-Token": secret_df["shopify_access_token"][0],
         }
         request = requests.get(f"https://{shop}/admin/api/2024-04/products/{id}.json", headers=headers).json()
         response.append({'node': {'id': f'gid://shopify/Product/{id}','title': request['product']['title']}})

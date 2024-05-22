@@ -12,6 +12,7 @@ aiohttp==3.9.5
 transformers==4.40.0
 huggingface-hub==0.22.2
 psycopg2-binary==2.9.9
+SQLAlchemy==2.0.30
 fastparquet
 torch==1.13.1+cpu
 torchvision==0.14.1+cpu
