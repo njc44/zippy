@@ -29,7 +29,7 @@ def health_check():
     return json.dumps({"success": True}), 200
 
 @app.get('/train')
-async def train_(request: Request):#shop, shopify_storefront_access_token, shopify_access_token):
+async def train_(request: Request):
     request_json = await request.json()
     shop = request_json.get('shop')
     shopify_storefront_access_token = request_json.get('shopify_storefront_access_token')
@@ -48,7 +48,7 @@ async def response_generator_(request: Request):
     return await response_generator(latest_user_message, user_id, shop)
 
 @app.get('/finetune_response')
-async def create_response_(request: Request):#query, response, shop, expiry_date='NA', action='NA'):
+async def create_response_(request: Request):
     request_json = await request.json()
     query = request_json.get('query')
     response = request_json.get('response')
