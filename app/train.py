@@ -512,6 +512,9 @@ def save_keys(shop, shopify_storefront_access_token, shopify_access_token):
 
 async def train(shop, shopify_storefront_access_token, shopify_access_token):
     try:
+        table_name = 'train_status'
+        new_row = pd.DataFrame({'train_status' : ['training start'],'shop' : [shop]})
+        insert_update_train_status(new_row,table_name)
         save_keys(shop, shopify_storefront_access_token, shopify_access_token)
         product_df = get_product_df(shop)
         df = product_df[['id','featuredImage_url','title','description','featuredImage_altText']]
@@ -533,6 +536,10 @@ async def train(shop, shopify_storefront_access_token, shopify_access_token):
         async def process_batches(batch_configs):
             await asyncio.gather(*(process_api_requests_from_file(**batch) for batch in batch_configs))
         asyncio.run(process_batches(final_batched_data))
+
+        table_name = 'train_status'
+        new_row = pd.DataFrame({'train_status' : ['async feature extraction done'],'shop' : [shop]})
+        insert_update_train_status(new_row,table_name)
 
         df_list = []
         for k, v in configs.items():
@@ -574,6 +581,10 @@ async def train(shop, shopify_storefront_access_token, shopify_access_token):
         insert_or_update_row_products(product_df, table_name)
         cut_connection(conn, cur)
 
+        table_name = 'train_status'
+        new_row = pd.DataFrame({'train_status' : ['Writing data to product table done'], 'shop' : [shop]})
+        insert_update_train_status(new_row,table_name)
+
         os.remove("/app/app/gpt4v_feature_extraction.jsonl")
         data = get_brand_and_policy_info(shop)
         
@@ -596,7 +607,14 @@ async def train(shop, shopify_storefront_access_token, shopify_access_token):
         bool1 = await create_response(questions[0],reply['refund'],shop)
         bool2 = await create_response(questions[1],reply['shipping'],shop)
 
+        table_name = 'train_status'
+        new_row = pd.DataFrame({'train_status' : ['Creating finetuned response done, Training complete!'],'shop' : [shop]})
+        insert_update_train_status(new_row,table_name)
+
         return bool1 and bool2
     except Exception as e:
         print("Error train", e)
+        table_name = 'train_status'
+        new_row = pd.DataFrame({'train_status' : ['Training failed'],'shop' : [shop]})
+        insert_update_train_status(new_row,table_name)
         return False

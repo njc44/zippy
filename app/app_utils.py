@@ -19,6 +19,20 @@ def cut_connection(conn, cur):
     cur.close()
     conn.close()
 
+def insert_update_train_status(new_row,table_name):
+    conn, cur, engine = get_connection()
+    shop_value = new_row['shop'][0]
+    existing_row = pd.read_sql_query(f"SELECT * FROM {table_name} WHERE shop = '{shop_value}'", engine)
+
+    if existing_row.empty:
+        new_row.to_sql(table_name, engine, if_exists='append', index=False)
+    else:
+        update_columns = [col for col in new_row.columns if col != 'shop']
+        update_values = {col: new_row[col].values[0] for col in update_columns}
+        update_query = f"""UPDATE {table_name} SET {', '.join([f"{col}='{update_values[col]}'" for col in update_columns])}""" + f" WHERE shop='{shop_value}'"
+        cur.execute(update_query)
+    cut_connection(conn, cur)
+
 def insert_or_update_row_secrets(new_row, table_name):
     conn, cur, engine = get_connection()
     shop_value = new_row['shop'][0]
