@@ -14,6 +14,7 @@ import torch
 from train import train
 from message import response_generator
 from finetune_response import create_response
+from app_utils import *
 
 load_dotenv('/app/app/.env')
 client=openai.OpenAI()
@@ -36,6 +37,14 @@ async def train_(request: Request):
     shopify_access_token = request_json.get("shopify_access_token")
 
     training_status = await train(shop, shopify_storefront_access_token, shopify_access_token)
+    return training_status
+
+@app.get('/train/status')
+async def train_(request: Request):
+    request_json = await request.json()
+    shop = request_json.get('shop')
+
+    training_status = await get_train_status(shop)
     return training_status
 
 @app.get('/message')

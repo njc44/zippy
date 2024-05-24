@@ -19,6 +19,13 @@ def cut_connection(conn, cur):
     cur.close()
     conn.close()
 
+async def get_train_status(shop):
+    conn, cur, engine = get_connection()
+    query = f"SELECT * FROM train_status where shop = '{shop}'"
+    train_status = pd.read_sql_query(query, conn)['train_status'].reset_index(drop=True)[0]
+    cut_connection(conn, cur)
+    return train_status
+
 def insert_update_train_status(new_row,table_name):
     conn, cur, engine = get_connection()
     shop_value = new_row['shop'][0]
