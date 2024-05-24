@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import random
 import time
@@ -42,7 +42,7 @@ tools = tools = [
 ]
 
 
-def response_generator(latest_user_message, user_id, shop):
+async def response_generator(latest_user_message, user_id, shop):
     conn, cur, engine = get_connection()
     table_name = 'messages'
     check_flag, reply, product_ids = check_similar_queries(latest_user_message,shop)
@@ -105,15 +105,15 @@ def response_generator(latest_user_message, user_id, shop):
             for idx, i in enumerate(search_response):
                 product_info += f'product_{idx}: '+i['node']['title']+'\n'
                 product_ids.append(i['node']['id'])
-            messages.append({"role": "system","content": f"Here are some products that surfaced from the customer query: \n{product_info} Try to recommend these to the customer, keep it short within 60 words or less if possible."})
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo-0125",
-                messages=messages,
-                max_tokens=1024
-                )
-            reply = response.choices[0].message.content
-    else:
-        reply = response.choices[0].message.content
+    #         messages.append({"role": "system","content": f"Here are some products that surfaced from the customer query: \n{product_info} Try to recommend these to the customer, keep it short within 60 words or less if possible."})
+    #         response = client.chat.completions.create(
+    #             model="gpt-3.5-turbo-0125",
+    #             messages=messages,
+    #             max_tokens=1024
+    #             )
+    #         reply = response.choices[0].message.content
+    # else:
+    #     reply = response.choices[0].message.content
         
     return_value = {}
     return_value['response'] = reply

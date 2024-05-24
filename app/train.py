@@ -505,29 +505,12 @@ async def process_api_requests_from_file(
             f"{status_tracker.num_content_moderation_error} / {status_tracker.num_tasks_started} content moderation errors received."
         )
 
-
-###############################################
-
-def insert_or_update_row(new_row, table_name):
-    conn, cur, engine = get_connection()
-    shop_value = new_row['shop'][0]
-    existing_row = pd.read_sql_query(f"SELECT * FROM {table_name} WHERE shop = '{shop_value}'", engine)
-
-    if existing_row.empty:
-        new_row.to_sql(table_name, engine, if_exists='append', index=False)
-    else:
-        update_columns = [col for col in new_row.columns if col != 'shop']
-        update_values = {col: new_row[col].values[0] for col in update_columns}
-        update_query = f"""UPDATE {table_name} SET {', '.join([f"{col}='{update_values[col]}'" for col in update_columns])}""" + f" WHERE shop='{shop_value}'"
-        cur.execute(update_query)
-    cut_connection(conn, cur)
-
 def save_keys(shop, shopify_storefront_access_token, shopify_access_token):
     table_name = 'secrets'
     new_row = pd.DataFrame({'shop' : [shop], 'shopify_storefront_access_token': [shopify_storefront_access_token], 'shopify_access_token': [shopify_access_token]})
-    insert_or_update_row(new_row, table_name)
+    insert_or_update_row_secrets(new_row, table_name)
 
-def train(shop, shopify_storefront_access_token, shopify_access_token):
+async def train(shop, shopify_storefront_access_token, shopify_access_token):
     try:
         save_keys(shop, shopify_storefront_access_token, shopify_access_token)
         product_df = get_product_df(shop)
@@ -543,7 +526,7 @@ def train(shop, shopify_storefront_access_token, shopify_access_token):
             v = df_x.T[4:5].rename(columns={j:f'featuredImage_altText_{j}' for j in range(batch_size)}).reset_index(drop=True)
             df_x = pd.concat([x,y,z,w,v],axis=1)
             df1 = pd.concat([df1,df_x],axis=0).reset_index(drop=True)
-        main_data_path = f'/app/app/data_files/gpt4v_feature_extraction.jsonl'
+        main_data_path = f'/app/app/gpt4v_feature_extraction.jsonl'
         df1.to_json(main_data_path, orient='records', lines=True)
 
         final_batched_data = get_batched_data_with_configs(main_data_path,is_post_process=True)
@@ -588,10 +571,10 @@ def train(shop, shopify_storefront_access_token, shopify_access_token):
         product_df['sparse_product_vector'] = product_df.apply(lambda x: json.dumps(list(x['sparse_product_vector'])),axis=1)
 
         conn, cur, engine = get_connection()
-        product_df.to_sql(table_name, engine, if_exists='append', index=False)
+        insert_or_update_row_products(product_df, table_name)
         cut_connection(conn, cur)
 
-        os.remove("/app/app/data_files/gpt4v_feature_extraction.jsonl")
+        os.remove("/app/app/gpt4v_feature_extraction.jsonl")
         data = get_brand_and_policy_info(shop)
         
         questions = ['What is your return policy?','How long does shipping typically take?']
@@ -610,10 +593,10 @@ def train(shop, shopify_storefront_access_token, shopify_access_token):
             )
         reply = response.choices[0].message.content
         reply = json.loads(reply)
-        create_response(questions[0],reply['refund'],shop)
-        create_response(questions[1],reply['shipping'],shop)
-        
-        return True
+        bool1 = await create_response(questions[0],reply['refund'],shop)
+        bool2 = await create_response(questions[1],reply['shipping'],shop)
+
+        return bool1 and bool2
     except Exception as e:
         print("Error train", e)
         return False

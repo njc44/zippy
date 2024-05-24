@@ -28,7 +28,7 @@ def dense_vector_formating(vector_data):
             rough_list[idx] = float(vd)
     return np.array(rough_list)
 
-def create_response(query, response, shop, action='NA', expiry_date='NA'):
+async def create_response(query, response, shop, action='NA', expiry_date='NA'):
 
     try:
         response_emb = client.embeddings.create(
@@ -41,7 +41,8 @@ def create_response(query, response, shop, action='NA', expiry_date='NA'):
         new_row = pd.DataFrame({'query':[query], 'response':[response], 'embedding':[embedding], 'expiry_date':[expiry_date], 'action':[action], 'shop':[shop]})
         conn, cur, engine = get_connection()
         table_name = 'finetune_response'
-        new_row.to_sql(table_name, engine, if_exists='append', index=False)
+        insert_or_update_row_finetune_response(new_row, table_name)
+        # new_row.to_sql(table_name, engine, if_exists='append', index=False)
         cut_connection(conn, cur)
 
         return True

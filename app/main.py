@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 import random
 import time
 import openai
@@ -29,17 +29,34 @@ def health_check():
     return json.dumps({"success": True}), 200
 
 @app.get('/train')
-def train_(shop, shopify_storefront_access_token, shopify_access_token):
-    training_status = train(shop, shopify_storefront_access_token, shopify_access_token)
+async def train_(request: Request):#shop, shopify_storefront_access_token, shopify_access_token):
+    request_json = await request.json()
+    shop = request_json.get('shop')
+    shopify_storefront_access_token = request_json.get('shopify_storefront_access_token')
+    shopify_access_token = request_json.get("shopify_access_token")
+
+    training_status = await train(shop, shopify_storefront_access_token, shopify_access_token)
     return training_status
 
 @app.get('/message')
-def response_generator_(latest_user_message, user_id, shop):
-    return response_generator(latest_user_message, user_id, shop)
+async def response_generator_(request: Request):
+    request_json = await request.json()
+    latest_user_message = request_json.get('latest_user_message')
+    user_id = request_json.get('user_id')
+    shop = request_json.get('shop')
+
+    return await response_generator(latest_user_message, user_id, shop)
 
 @app.get('/finetune_response')
-def create_response_(query, response, shop, expiry_date='NA', action='NA'):
-    create_response_status = create_response(query, response, shop, expiry_date, action)
+async def create_response_(request: Request):#query, response, shop, expiry_date='NA', action='NA'):
+    request_json = await request.json()
+    query = request_json.get('query')
+    response = request_json.get('response')
+    shop = request_json.get('shop')
+    expiry_date = 'NA'
+    action = 'NA'
+
+    create_response_status = await create_response(query, response, shop, expiry_date, action)
     return create_response_status
 
 if __name__ == '__main__':
