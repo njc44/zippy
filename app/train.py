@@ -81,6 +81,14 @@ def get_product_data(shop):
     jsonObj = pd.read_json(BytesIO(r.content), lines=True)
     return jsonObj
 
+def add_variant_info(row, variant_df):
+    parent_id = row['id']
+    df_temp = variant_df[variant_df['__parentId']==parent_id].reset_index(drop=True)
+    temp_list = []
+    for irow in df_temp.iloc():
+        temp_list.append(dict(irow[['id','price','title', 'image', 'sku', 'weight','weightUnit', 'availableForSale', '__parentId']]))
+    return temp_list
+
 def get_product_df(shop):
     jsonObj = get_product_data(shop)
 
@@ -88,13 +96,6 @@ def get_product_df(shop):
     variant_df = jsonObj[jsonObj['createdAt'].isnull()][['id','price', 'title', 'image', 'sku', 'weight','weightUnit', 'availableForSale', '__parentId']].reset_index(drop=True)
     live_variant_df = variant_df[variant_df['availableForSale']==1].reset_index(drop=True)
 
-    def add_variant_info(row, variant_df):
-        parent_id = row['id']
-        df_temp = variant_df[variant_df['__parentId']==parent_id].reset_index(drop=True)
-        temp_list = []
-        for irow in df_temp.iloc():
-            temp_list.append(dict(irow[['id','price','title', 'image', 'sku', 'weight','weightUnit', 'availableForSale', '__parentId']]))
-        return temp_list
     product_df['variant_info'] = product_df.apply(add_variant_info,variant_df=live_variant_df,axis=1)
     product_df = product_df.dropna().reset_index(drop=True)
     product_df[['featuredImage_url','featuredImage_id','featuredImage_altText']] = product_df.apply(lambda x: pd.Series([x['featuredImage']['url'],x['featuredImage']['id'],x['featuredImage']['altText']]),axis=1)
@@ -586,32 +587,32 @@ async def train(shop, shopify_storefront_access_token, shopify_access_token):
         insert_update_train_status(new_row,table_name)
 
         os.remove("/app/app/gpt4v_feature_extraction.jsonl")
-        data = get_brand_and_policy_info(shop)
+        # data = get_brand_and_policy_info(shop)
         
-        questions = ['What is your return policy?','How long does shipping typically take?']
-        system_prompt = f"""You are a sales agent on an ecommerce platform, your job is to reply to customer queries just as a real life sales agent would. What would your reply be to '{questions[0]}' & {questions[1]} given:
-        Refund Policy - {data['refundPolicy']['body']}\n
-        Shipping Policy - {data['shippingPolicy']['body']}\n
-        Make sure the answers are crisp and to the point
-        Respond in json format with keys 'refund' & 'shipping' with the values as your responses.
-        """
+        # questions = ['What is your return policy?','How long does shipping typically take?']
+        # system_prompt = f"""You are a sales agent on an ecommerce platform, your job is to reply to customer queries just as a real life sales agent would. What would your reply be to '{questions[0]}' & {questions[1]} given:
+        # Refund Policy - {data['refundPolicy']['body']}\n
+        # Shipping Policy - {data['shippingPolicy']['body']}\n
+        # Make sure the answers are crisp and to the point
+        # Respond in json format with keys 'refund' & 'shipping' with the values as your responses.
+        # """
 
-        messages = [{"role": "system","content": system_prompt}]
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            messages=messages,
-            response_format = { "type": "json_object" }
-            )
-        reply = response.choices[0].message.content
-        reply = json.loads(reply)
-        bool1 = await create_response(questions[0],reply['refund'],shop)
-        bool2 = await create_response(questions[1],reply['shipping'],shop)
+        # messages = [{"role": "system","content": system_prompt}]
+        # response = client.chat.completions.create(
+        #     model="gpt-3.5-turbo-0125",
+        #     messages=messages,
+        #     response_format = { "type": "json_object" }
+        #     )
+        # reply = response.choices[0].message.content
+        # reply = json.loads(reply)
+        # bool1 = await create_response(questions[0],reply['refund'],shop)
+        # bool2 = await create_response(questions[1],reply['shipping'],shop)
 
         table_name = 'train_status'
         new_row = pd.DataFrame({'train_status' : ['Creating finetuned response done, Training complete!'],'shop' : [shop]})
         insert_update_train_status(new_row,table_name)
 
-        return bool1 and bool2
+        return True #bool1 and bool2
     except Exception as e:
         print("Error train", e)
         table_name = 'train_status'

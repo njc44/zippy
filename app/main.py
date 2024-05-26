@@ -50,11 +50,14 @@ async def train_(request: Request):
 @app.get('/message')
 async def response_generator_(request: Request):
     request_json = await request.json()
-    latest_user_message = request_json.get('latest_user_message')
+    message = request_json.get('message')
+    role = request_json.get('role')
+    action = request_json.get('action')
+    actionData = request_json.get('actionData')
     user_id = request_json.get('user_id')
     shop = request_json.get('shop')
 
-    return await response_generator(latest_user_message, user_id, shop)
+    return await response_generator(message,role,action,actionData,user_id,shop)
 
 @app.get('/finetune_response')
 async def create_response_(request: Request):

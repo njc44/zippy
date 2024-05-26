@@ -60,11 +60,15 @@ def call_search_api(keywords, shop):
     query = f"SELECT * FROM secrets where shop = '{shop}'"
     secret_df = pd.read_sql_query(query, conn).reset_index(drop=True)
     cut_connection(conn, cur)
-    for id in top_5:
-        headers = {
-        "X-Shopify-Access-Token": secret_df["shopify_access_token"][0],
-        }
-        request = requests.get(f"https://{shop}/admin/api/2024-04/products/{id}.json", headers=headers).json()
-        response.append({'node': {'id': f'gid://shopify/Product/{id}','title': request['product']['title']}})
+    headers = {"X-Shopify-Access-Token": secret_df["shopify_access_token"][0]}
+    request = requests.get(f"https://{shop}/admin/api/2024-04/products.json?ids={','.join(top_5)}", headers=headers).json()
+    for json_request in request["products"]:
+        response.append({
+            "id": f"gid://shopify/Product/{json_request['id']}",
+            "title": json_request["title"],
+            "featuredImage": {
+                "url": json_request["image"]["src"]
+            }
+        })
 
     return response

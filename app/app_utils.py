@@ -1,5 +1,6 @@
 import os
 import json
+import requests
 import pandas as pd
 from dotenv import load_dotenv
 import psycopg2
@@ -100,3 +101,33 @@ def insert_or_update_row_products(new_df, table_name):
 
     conn.commit()
     cut_connection(conn, cur)
+
+def get_product_variants(shop, actionData):
+    conn, cur, _ = get_connection()
+    query = f"SELECT * FROM secrets where shop = '{shop}'"
+    secret_df = pd.read_sql_query(query, conn).reset_index(drop=True)
+    cut_connection(conn, cur)
+
+    query = """query getProductById($id: ID!) { product(id: $id) { id title description variants(first: 9) { nodes { id title image { url } price { amount currencyCode } } } } }"""
+    variables = {"id": actionData['productId']}
+    headers = {"X-Shopify-Storefront-Access-Token": secret_df["shopify_storefront_access_token"][0],"Content-Type": "application/json"}
+    payload = {"query": query,"variables": variables}
+
+    response = requests.post(f"https://{shop}/api/2024-04/graphql.json", headers=headers, json=payload)
+    response_data = response.json()['data']['product']
+    return response_data
+
+def get_product_title_from_variant(shop, actionData):
+    conn, cur, _ = get_connection()
+    query = f"SELECT * FROM secrets where shop = '{shop}'"
+    secrets_df = pd.read_sql_query(query, conn).reset_index(drop=True)
+    cut_connection(conn, cur)
+
+    query = """query getProductVariant($id: ID!) { node(id: $id) { ... on ProductVariant { title } } }"""
+    variables = {"id": actionData['variantId']}
+    headers = { "X-Shopify-Storefront-Access-Token": secrets_df["shopify_storefront_access_token"][0], "Content-Type": "application/json"}
+    payload = {"query": query, "variables": variables}
+
+    response = requests.post(f"https://{shop}/api/2024-04/graphql.json", headers=headers, json=payload)
+    response_data = response.json()['data']['node']['title']
+    return response_data
