@@ -59,24 +59,42 @@ def get_return_value(reply,action,actionData,timestamp):
     return_value['actionData'] = actionData
     return_value['timestamp'] = timestamp
     return return_value
-    
+
+def add_to_cart(shop,user_id,actionData):
+    product_title = get_product_title_from_variant(shop, actionData)
+    reply = f"Great choice! I have added {product_title} to you cart. Happy Shopping!"
+    timestamp = record_message(reply,'assistant','ADD_TO_CART',actionData,user_id,shop)
+    return_value = get_return_value(reply,'ADD_TO_CART',actionData,timestamp)
+    return return_value
 
 async def response_generator(message,role,action,actionData,user_id,shop):
     record_message(message,role,action,actionData,user_id,shop)
-    if action == "SUGGEST_PRODUCT_VARIANTS":
-        reply = ""
-        actionData = get_product_variants(shop, actionData)
-        timestamp = record_message(reply,'assistant',action,actionData,user_id,shop)
-        return_value = get_return_value(reply,action,actionData,timestamp)
-        return return_value
+    # if action == "SUGGEST_PRODUCT_VARIANTS":
+    #     reply = ""
+    #     actionData = get_product_variants(shop, actionData)
+    #     timestamp = record_message(reply,'assistant',action,actionData,user_id,shop)
+    #     return_value = get_return_value(reply,action,actionData,timestamp)
+    #     return return_value
     
+    # if action == "ADD_TO_CART":
+    #     product_title = get_product_title_from_variant(shop, actionData)
+    #     reply = f"Great choice! I have added {product_title} to you cart. Happy Shopping!"
+    #     timestamp = record_message(reply,'assistant',action,actionData,user_id,shop)
+    #     return_value = get_return_value(reply,action,actionData,timestamp)
+    #     return return_value
+
     if action == "ADD_TO_CART":
-        product_title = get_product_title_from_variant(shop, actionData)
-        reply = f"Great choice! I have added {product_title} to you cart. Happy Shopping!"
-        timestamp = record_message(reply,'assistant',action,actionData,user_id,shop)
-        return_value = get_return_value(reply,action,actionData,timestamp)
-        return return_value
-        
+      if 'productId' in actionData.keys():
+          productVariants = get_product_variants(shop, actionData)
+          if len(productVariants['variants']['nodes']) > 1:
+              reply = f"We have found a few variants of the selected products, select the most relevant to add to cart!"
+              timestamp = record_message(reply,'assistant','SUGGEST_PRODUCT_VARIANTS',actionData,user_id,shop)
+              return_value = get_return_value(reply,'SUGGEST_PRODUCT_VARIANTS',actionData,timestamp)
+              return return_value
+          else:
+              return add_to_cart(shop,user_id,{'variantId': productVariants['variants']['nodes'][0]['id']})
+      if 'variantId' in actionData.keys():
+          return add_to_cart(shop,user_id,actionData)
 
     # check_flag, reply, product_ids = check_similar_queries(message,shop)
     # if check_flag == True:
