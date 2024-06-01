@@ -3,7 +3,7 @@ from itertools import islice
 import pandas as pd
 
 from dotenv import load_dotenv
-load_dotenv('/app/app/.env')
+load_dotenv()
 
 
 run_id = 1

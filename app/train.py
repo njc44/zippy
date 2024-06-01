@@ -37,7 +37,7 @@ from finetune_response import create_response
 from search import *
 from app_utils import *
 
-load_dotenv('/app/app/.env')
+load_dotenv()
 client=openai.OpenAI()
 
 

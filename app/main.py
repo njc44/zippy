@@ -16,7 +16,7 @@ from message import response_generator, get_messages
 from finetune_response import create_response
 from app_utils import *
 
-load_dotenv('/app/app/.env')
+load_dotenv()
 client=openai.OpenAI()
 
 app = FastAPI()

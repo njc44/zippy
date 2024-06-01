@@ -17,7 +17,7 @@ from app_utils import *
 import psycopg2
 from sqlalchemy import create_engine
 
-load_dotenv('/app/app/.env')
+load_dotenv()
 client=openai.OpenAI()
 
 
