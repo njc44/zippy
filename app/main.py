@@ -12,7 +12,7 @@ import numpy as np
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 import torch
 from train import train
-from message import response_generator
+from message import response_generator, get_messages
 from finetune_response import create_response
 from app_utils import *
 
@@ -58,6 +58,14 @@ async def response_generator_(request: Request):
     shop = request_json.get('shop')
 
     return await response_generator(message,role,action,actionData,user_id,shop)
+
+@app.get('/messages')
+async def messages(request: Request):
+    request_json = await request.json()
+    user_id = request_json.get('user_id')
+    shop = request_json.get('shop')
+
+    return await get_messages(shop, user_id)
 
 @app.get('/finetune_response')
 async def create_response_(request: Request):
