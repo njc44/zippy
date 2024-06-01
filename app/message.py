@@ -144,6 +144,8 @@ async def response_generator(message,role,action,actionData,user_id,shop):
     if type(response.choices[0].message.content) != str:
         if response.choices[0].message.tool_calls[0].function.name == "call_search_api":
                 keywords = json.loads(response.choices[0].message.tool_calls[0].function.arguments)['keywords']
+                if type(keywords) == str:
+                    keywords = [keywords,keywords]
                 search_response = call_search_api(keywords, shop)
                 action = "SUGGEST_PRODUCTS"
                 actionData = {'products':search_response}
