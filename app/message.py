@@ -161,7 +161,7 @@ async def response_generator(message,role,action,actionData,user_id,shop):
 async def get_messages(shop, user_id):
     conn, cur, engine = get_connection()
     query = f"SELECT * FROM message where shop = '{shop}' and user_id = '{user_id}' order by timestamp desc"
-    messages = pd.read_sql_query(query, conn)
+    messages = pd.read_sql_query(query, conn).rename(columns = {'actiondata':'actionData'})
     response = messages.to_dict(orient='records')
     cut_connection(conn, cur)
     response_json = {"messages":response}
